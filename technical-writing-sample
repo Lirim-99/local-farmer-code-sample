@@ -1,0 +1,144 @@
+import React, { useEffect, useState } from 'react';
+import { useValue } from '../../context/ContextProvider'; // Importing custom context hook
+import { getProducts } from '../../actions/product'; // Importing function to fetch product data
+import { StarBorder } from '@mui/icons-material'; // Importing icon component
+import { getDistance } from 'geolib'; // Importing function to calculate distance
+
+// Importing MUI components
+import {
+  Avatar,
+  Card,
+  Container,
+  ImageList,
+  ImageListItem,
+  ImageListItemBar,
+  Rating,
+  Tooltip,
+} from '@mui/material';
+
+// Functional component definition
+const Products = () => {
+  const { state: { filteredProducts }, dispatch } = useValue(); // Destructuring state and dispatch function from context
+  const [userLocation, setUserLocation] = useState(null); // State variable to store user location
+  const [sortedProducts, setSortedProducts] = useState([]); // State variable to store sorted products
+  const currentUser = localStorage.getItem('currentUser'); // Retrieving current user data from localStorage
+  const user = currentUser ? JSON.parse(currentUser) : null; // Parsing current user data if available
+
+  // Fetching products data on component mount
+  useEffect(() => {
+    getProducts(dispatch);
+  }, [dispatch]);
+
+  // Updating user location when component mounts or user location permission changes
+  useEffect(() => {
+    const updateUserLocation = async () => {
+      try {
+        const permission = await navigator.permissions.query({ name: 'geolocation' }); // Checking geolocation permission
+        if (permission.state === 'granted') { // If permission granted
+          navigator.geolocation.getCurrentPosition(
+            (position) => { // Success callback
+              const userCoordinates = { // Extracting user coordinates
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              };
+              setUserLocation(userCoordinates); // Setting user location state
+            },
+            (error) => { // Error callback
+              console.error('Error getting user location:', error); // Logging error
+            }
+          );
+        }
+      } catch (error) {
+        console.error('Error getting user location:', error); // Logging error
+      }
+    };
+
+    updateUserLocation(); // Calling function to update user location
+
+  }, []);
+
+  // Sorting and filtering productss based on user location and role
+  useEffect(() => {
+    if (userLocation && filteredProducts.length > 0) { // If user location and products data available
+      const productsWithDistance = filteredProducts.map((product) => {
+        if (product.lat !== undefined && product.lng !== undefined) { // If product coordinates available
+          const distance = getDistance( // Calculating distance from user location
+            { latitude: userLocation.latitude, longitude: userLocation.longitude },
+            { latitude: product.lat, longitude: product.lng }
+          );
+          return { ...product, distance }; // Adding distance to product object
+        } else {
+          return { ...product, distance: Infinity }; // Assigning infinite distance if coordinates not available
+        }
+      });
+  
+      const sorted = productsWithDistance.sort((a, b) => a.distance - b.distance); // Sorting products by distance
+  
+      if (user && user.role === 'basic') { // If user role is basic
+        const nearProducts = sorted.filter((product) => product.distance <= 20000); // Filtering products within 20km radius
+        setSortedProducts(nearProducts); // Setting sorted products state
+      } else {
+        setSortedProducts(sorted); // Setting sorted products state
+      }
+    } else {
+      setSortedProducts(filteredProducts); // Setting sorted products state as filtered products
+    }
+  }, [filteredProducts, userLocation, user]); // Dependencies for useEffect
+
+  // JSX rendering
+  return (
+    <Container>
+     <ImageList
+        gap={12}
+        sx={{
+          mb: 8,
+          gridTemplateColumns:
+            'repeat(auto-fill, minmax(250px, 1fr))!important',
+        }}
+      >
+        {sortedProducts.map((product) => (
+          <Card key={product._id} sx={{ maxHeight: 250 }}>
+            <ImageListItem sx={{ height: '100% !important' }}>
+              <ImageListItemBar
+                sx={{
+                  background:
+                    'linear-gradient(to bottom, rgba(0,0,0,0.7)0%, rgba(0,0,0,0.3)70%, rgba(0,0,0,0)100%)',
+                }}
+                title={product.price === 0 ? 'Free' : '$' + product.price} // Displaying product price
+                actionIcon={
+                  <Tooltip title={product.uName} sx={{ mr: '5px' }}>
+                    <Avatar src={product.uPhoto} /> // Displaying product owner's photo
+                  </Tooltip>
+                }
+                position="top"
+              />
+              <img
+                src={product.images[0]} // Displaying product image
+                alt={product.title}
+                loading="lazy"
+                style={{ cursor: 'pointer' }}
+                onClick={() => dispatch({ type: 'UPDATE_ROOM', payload: product })} // Dispatching product update action on image click
+              />
+              <ImageListItemBar
+                title={product.title} // Displaying product title
+                actionIcon={
+                  <Rating
+                    sx={{ color: 'rgba(255,255,255, 0.8)', mr: '5px' }}
+                    name="product-rating"
+                    defaultValue={3.5} // Default rating value
+                    precision={0.5}
+                    emptyIcon={
+                      <StarBorder sx={{ color: 'rgba(255,255,255, 0.8)' }} /> // Displaying star border icon for rating
+                    }
+                  />
+                }
+              />
+            </ImageListItem>
+          </Card>
+        ))}
+      </ImageList>
+    </Container>
+  );
+};
+
+export default Products;
