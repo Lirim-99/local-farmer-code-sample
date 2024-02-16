@@ -1,4 +1,4 @@
-# local-farmer-code-sample
+# solarpunk-code-sample
 
 Description:
 
